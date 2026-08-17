@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>.</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+  }
+  body {
+    position: relative;
+    background: linear-gradient(180deg, #1b1140 0%, #3a1c5e 30%, #7a3d8f 55%, #d1608a 78%, #ffb27d 100%);
+  }
+  .star {
+    position: absolute;
+    background: #fff;
+    border-radius: 50%;
+    animation: twinkle 2.6s ease-in-out infinite;
+    pointer-events: none;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 0.9; }
+  }
+  .moon {
+    position: absolute;
+    top: 8%;
+    right: 12%;
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #fff9e8, #ffe9a8 60%, #f6d37a 100%);
+    box-shadow: 0 0 40px rgba(255, 240, 180, 0.55);
+    pointer-events: none;
+  }
+  .cloud {
+    position: absolute;
+    background: rgba(255,255,255,0.18);
+    border-radius: 50%;
+    filter: blur(4px);
+    pointer-events: none;
+  }
+
+  #stage {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .balloon-pos {
+    position: absolute;
+    top: 120vh;
+    transform: translate(-50%, -50%);
+    transition: top 3.4s cubic-bezier(.22,.75,.32,1), left 3.4s cubic-bezier(.22,.75,.32,1);
+    will-change: top, left;
+  }
+  .balloon-bob {
+    animation: bob 3.2s ease-in-out infinite;
+  }
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50% { transform: translateY(-10px) rotate(2deg); }
+  }
+  .balloon {
+    position: relative;
+    width: 48px;
+    height: 60px;
+    border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset -6px -8px 14px rgba(0,0,0,0.18), inset 6px 6px 10px rgba(255,255,255,0.25), 0 6px 14px rgba(0,0,0,0.25);
+  }
+  .balloon::after {
+    content: '';
+    position: absolute;
+    bottom: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 8px solid inherit;
+  }
+  .string {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    width: 1px;
+    height: 40px;
+    background: rgba(255,255,255,0.55);
+  }
+  .letter {
+    color: #fff;
+    font-weight: 800;
+    font-size: 19px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.45);
+  }
+
+  .msg-hint {
+    position: absolute;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255,255,255,0.55);
+    font-size: 12px;
+    letter-spacing: 0.4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="moon"></div>
+<div id="stage"></div>
+<div class="msg-hint">💗</div>
+
+<script>
+const stage = document.getElementById('stage');
+
+// ---------- background decor ----------
+(function initSky(){
+  for (let i = 0; i < 60; i++){
+    const s = document.createElement('div');
+    s.className = 'star';
+    const size = Math.random() * 2 + 1;
+    s.style.width = size + 'px';
+    s.style.height = size + 'px';
+    s.style.top = (Math.random() * 55) + 'vh';
+    s.style.left = (Math.random() * 100) + 'vw';
+    s.style.animationDelay = (Math.random() * 3) + 's';
+    document.body.appendChild(s);
+  }
+  const cloudSpecs = [
+    {w:180,h:60,top:'62vh',left:'-10vw'},
+    {w:220,h:70,top:'75vh',left:'55vw'},
+    {w:150,h:50,top:'85vh',left:'20vw'},
+  ];
+  cloudSpecs.forEach(c=>{
+    const d = document.createElement('div');
+    d.className = 'cloud';
+    d.style.width = c.w+'px';
+    d.style.height = c.h+'px';
+    d.style.top = c.top;
+    d.style.left = c.left;
+    document.body.appendChild(d);
+  });
+})();
+
+// ---------- balloon colors ----------
+const palette = ["#ff5f6d","#ffc371","#6a82fb","#fc5c7d","#42e695","#3bb2b8","#f7797d","#a18cd1","#f6d365","#84fab0"];
+
+function nextFrame(){
+  return new Promise(res => requestAnimationFrame(() => requestAnimationFrame(res)));
+}
+function delay(ms){
+  return new Promise(res => setTimeout(res, ms));
+}
+
+function wordsFromPhrase(str, appendHeartToLast){
+  const words = str.split(' ').map(w => Array.from(w));
+  if (appendHeartToLast){
+    words[words.length - 1] = words[words.length - 1].concat(['❤️']);
+  }
+  return words;
+}
+
+function buildLayout(words){
+  const baseSpacing = 58;
+  const maxRowWidth = window.innerWidth * 0.92;
+
+  // Eng uzun so'z ekranga sig'adigan darajada masofani kichraytiramiz
+  const longestWordLen = Math.max(...words.map(w => w.length));
+  let spacingX = baseSpacing;
+  if (longestWordLen * baseSpacing > maxRowWidth){
+    spacingX = Math.max(26, Math.floor(maxRowWidth / longestWordLen));
+  }
+  const scale = spacingX / baseSpacing;
+  const wordGap = Math.max(12, Math.round(spacingX * 0.42));
+  const rowHeight = Math.max(46, Math.round(78 * scale));
+
+  // So'zlarni qatorlarga yig'ish — hech qachon so'z o'rtadan bo'linmaydi
+  const rows = [];
+  let currentRow = [];
+  let currentWidth = 0;
+
+  words.forEach(word => {
+    const wWidth = word.length * spacingX;
+    const addWidth = currentRow.length === 0 ? wWidth : wWidth + wordGap;
+    if (currentWidth + addWidth > maxRowWidth && currentRow.length > 0){
+      rows.push(currentRow);
+      currentRow = [word];
+      currentWidth = wWidth;
+    } else {
+      currentRow.push(word);
+      currentWidth += addWidth;
+    }
+  });
+  if (currentRow.length) rows.push(currentRow);
+
+  const totalHeight = rows.length * rowHeight;
+  const baseY = window.innerHeight * 0.4 - totalHeight / 2 + rowHeight / 2;
+
+  const positions = [];
+  rows.forEach((row, rIdx) => {
+    const rowWidth = row.reduce((sum, w) => sum + w.length * spacingX, 0) + wordGap * (row.length - 1);
+    let x = (window.innerWidth - rowWidth) / 2;
+    row.forEach(word => {
+      word.forEach(() => {
+        positions.push({ x: x + spacingX / 2, y: baseY + rIdx * rowHeight });
+        x += spacingX;
+      });
+      x += wordGap;
+    });
+  });
+  return { positions, scale };
+}
+
+function createBalloons(words){
+  const tokens = words.flat();
+  const { positions, scale } = buildLayout(words);
+  const els = [];
+
+  tokens.forEach((tok, i) => {
+    const pos = document.createElement('div');
+    pos.className = 'balloon-pos';
+    const startX = Math.random() * window.innerWidth;
+    pos.style.left = startX + 'px';
+    pos.style.top = '120vh';
+
+    const scaleWrap = document.createElement('div');
+    scaleWrap.style.transform = `scale(${scale})`;
+
+    const bob = document.createElement('div');
+    bob.className = 'balloon-bob';
+    bob.style.animationDelay = (Math.random() * 2) + 's';
+
+    const balloon = document.createElement('div');
+    balloon.className = 'balloon';
+    const color = palette[Math.floor(Math.random() * palette.length)];
+    balloon.style.background = `radial-gradient(circle at 35% 30%, ${color}, ${color}cc 70%, ${color}99 100%)`;
+    balloon.style.color = color;
+
+    const letter = document.createElement('span');
+    letter.className = 'letter';
+    letter.textContent = tok;
+    balloon.appendChild(letter);
+
+    const string = document.createElement('div');
+    string.className = 'string';
+
+    bob.appendChild(balloon);
+    bob.appendChild(string);
+    scaleWrap.appendChild(bob);
+    pos.appendChild(scaleWrap);
+    stage.appendChild(pos);
+
+    els.push({ pos, target: positions[i] });
+  });
+
+  return { els };
+}
+
+function shuffledIndices(n){
+  const arr = Array.from({ length: n }, (_, i) => i);
+  for (let i = arr.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function enterBalloons({ els }, opts = {}){
+  const { random = false, stagger = 70 } = opts;
+  const order = random ? shuffledIndices(els.length) : els.map((_, i) => i);
+
+  order.forEach((elIdx, orderPos) => {
+    const { pos, target } = els[elIdx];
+    setTimeout(() => {
+      pos.style.left = target.x + 'px';
+      pos.style.top = target.y + 'px';
+    }, orderPos * stagger);
+  });
+}
+
+function exitBalloons(els){
+  els.forEach(({ pos }, i) => {
+    setTimeout(() => {
+      pos.style.top = '-40vh';
+    }, i * 30);
+  });
+}
+
+function cleanup(els){
+  els.forEach(({ pos }) => pos.remove());
+}
+
+// ---------- phrase tokens (so'z-so'z, hech qachon o'rtadan bo'linmaydi) ----------
+const phrase1 = wordsFromPhrase("Seni sevaman hayotim", true);
+const phrase2 = wordsFromPhrase("Biroz etiborsizligim uchun uzur", false);
+
+const ENTER_TIME = 3600;       // sekinlashtirilgan ko'tarilish
+const EXIT_TIME = 3200;
+const STAGGER = 75;
+const HOLD_AFTER_LOVE = 2000;
+const HOLD_AFTER_SORRY = 5000;
+
+async function runCycle(){
+  // Phrase 1 enters alone, tartib bilan
+  let current = createBalloons(phrase1);
+  await nextFrame();
+  enterBalloons(current, { random: false, stagger: STAGGER });
+  await delay(ENTER_TIME + phrase1.flat().length * STAGGER);
+  await delay(HOLD_AFTER_LOVE);
+
+  while (true){
+    // Phrase 2 — tasodifiy tartibda chiqadi, so'ng joyiga tartib bilan yig'iladi
+    const next = createBalloons(phrase2);
+    await nextFrame();
+    exitBalloons(current.els);
+    enterBalloons(next, { random: true, stagger: STAGGER });
+    await delay(Math.max(EXIT_TIME, ENTER_TIME + phrase2.flat().length * STAGGER));
+    cleanup(current.els);
+    current = next;
+    await delay(HOLD_AFTER_SORRY);
+
+    // Phrase 1 qaytadi, tartib bilan
+    const next1 = createBalloons(phrase1);
+    await nextFrame();
+    exitBalloons(current.els);
+    enterBalloons(next1, { random: false, stagger: STAGGER });
+    await delay(Math.max(EXIT_TIME, ENTER_TIME + phrase1.flat().length * STAGGER));
+    cleanup(current.els);
+    current = next1;
+    await delay(HOLD_AFTER_LOVE);
+  }
+}
+
+runCycle();
+</script>
+</body>
+</html>
